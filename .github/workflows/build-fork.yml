@@ -1,0 +1,50 @@
+name: build-fork
+# Minimal CI to compile AltTab v10.12.0 (last fully-free, pre-Pro release)
+# from source on a GitHub macOS runner, with NO Apple signing/notarization
+# secrets required. Produces an ad-hoc-signed AltTab.app as a build artifact.
+on:
+  push:
+    branches: [build]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain (pick Xcode 26 if available)
+        run: |
+          ls /Applications | grep -i xcode || true
+          if [ -d /Applications/Xcode_26.0.1.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
+          fi
+          xcodebuild -version
+          swift --version
+
+      - name: Build (ad-hoc signed; no Apple account needed)
+        run: |
+          set -ex
+          xcodebuild \
+            -workspace alt-tab-macos.xcworkspace \
+            -scheme Release \
+            -derivedDataPath DerivedData \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            OTHER_CODE_SIGN_FLAGS=--deep
+
+      - name: Package app into a zip
+        run: |
+          set -ex
+          cd DerivedData/Build/Products/Release
+          file AltTab.app/Contents/MacOS/AltTab
+          ditto -c -k --keepParent AltTab.app AltTab-v10.12.0.zip
+          ls -lh AltTab-v10.12.0.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AltTab-v10.12.0
+          path: DerivedData/Build/Products/Release/AltTab-v10.12.0.zip
+          if-no-files-found: error
